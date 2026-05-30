@@ -1,0 +1,2095 @@
+---
+title: "Project 3"
+author: "Lucas Andersen, Arjun Gautam, Cameron Her, Efrain Olivares"
+date: "2025-08-03"
+output: pdf_document
+---
+
+# PREPARING THE DATA
+
+```{r}
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+
+haititrain <- read.csv("https://gedeck.github.io/DS-6030/project/HaitiPixels.csv")
+
+```
+
+```{r}
+setwd("/Users/arjungautam/Documents/UVA/Summer25/DS6030/HoldOutData")
+
+process_load_holdout_file <- function(filename) {
+    fileLines <- readLines(sprintf(filename), skip=7)
+    fileLines[8] <- gsub(";", "", fileLines[8])
+    fileLines[8] <- gsub("Map X", "Map_X", fileLines[8])
+    fileLines[8] <- gsub("Map Y", "Map_Y", fileLines[8])
+    writeLines(fileLines, sprintf(filename))
+    read_table(sprintf(filename), skip=7)
+}
+
+rename_set_target <- function(df, class_target) {
+    colnames(df)[colnames(df) == 'B1'] <- 'Red'
+    colnames(df)[colnames(df) == 'B2'] <- 'Green'
+    colnames(df)[colnames(df) == 'B3'] <- 'Blue'
+    df %>%mutate(target = class_target)
+}
+
+# collect holdout blue tarp data
+holdout_blue_tarp <- bind_rows(
+    process_load_holdout_file("orthovnir067_ROI_Blue_Tarps.txt"),
+    process_load_holdout_file("orthovnir069_ROI_Blue_Tarps.txt"),
+    process_load_holdout_file("orthovnir078_ROI_Blue_Tarps.txt")
+)
+
+test_blue_tarp <- holdout_blue_tarp %>%
+    rename_set_target('blue_tarp') %>%
+    dplyr::select(c(Red, Green, Blue, target))
+
+head(test_blue_tarp)
+nrow(test_blue_tarp)
+
+```
+
+
+```{r}
+# collect holdout non_blue tarp data
+holdout_non_blue_tarp <- bind_rows(
+  process_load_holdout_file("/Users/arjungautam/Documents/UVA/Summer25/DS6030/HoldOutData/orthovnir078_ROI_NON_Blue_Tarps.txt"),
+  process_load_holdout_file("/Users/arjungautam/Documents/UVA/Summer25/DS6030/HoldOutData/orthovnir067_ROI_NOT_Blue_Tarps.txt"),
+  process_load_holdout_file("/Users/arjungautam/Documents/UVA/Summer25/DS6030/HoldOutData/orthovnir069_ROI_NOT_Blue_Tarps.txt"),
+  process_load_holdout_file("/Users/arjungautam/Documents/UVA/Summer25/DS6030/HoldOutData/orthovnir057_ROI_NON_Blue_Tarps.txt")
+)
+
+test_non_blue_tarp <- holdout_non_blue_tarp %>%
+    rename_set_target('non_blue') %>%
+    dplyr::select(c(Red, Green, Blue, target))
+
+#head(holdout_non_blue_tarp)
+nrow(test_non_blue_tarp)
+```
+
+```{r}
+# combine both for final set
+holdout_class <- bind_rows(
+  test_blue_tarp,
+  test_non_blue_tarp
+)
+```
+
+```{r}
+haititrain <- haititrain %>%
+  mutate(
+    Class = if_else(Class == "Blue Tarp", "Blue Tarp", "Non-Tarp"),
+    Class = factor(Class)
+  )
+```
+
+```{r}
+holdout_class <- holdout_class %>% rename(Class = target)
+```
+
+```{r}
+
+new_datapoints <- read_table('image_rgb.txt') 
+colnames(new_datapoints) <- c("Red", "Green", "Blue") 
+thepreds <- predict(lda_fit, new_data=new_datapoints) 
+write.csv(thepreds, "LDAthepreds.csv", row.names = FALSE) 
+```
+
+```{r}
+new_datapoints <- read_table('image_rgb.txt') 
+colnames(new_datapoints) <- c("Red", "Green", "Blue") 
+thepreds <- predict(log_fit, new_data=new_datapoints) 
+write.csv(thepreds, "LOGthepreds.csv", row.names = FALSE) 
+```
+
+#LDA, QDA, LOG REG
+
+
+```{r}
+pixel_recipe <- recipe(Class ~ Red + Green + Blue, data = haititrain) %>%
+  step_normalize(all_predictors())
+```
+
+```{r}
+library(discrim)
+
+# Logistic Regression
+log_spec <- logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+# LDA
+lda_spec <- discrim_linear() %>%
+  set_engine("MASS") %>%
+  set_mode("classification")
+
+# QDA
+qda_spec <- discrim_quad() %>%
+  set_engine("MASS") %>%
+  set_mode("classification")
+
+log_wf <- workflow() %>% add_model(log_spec) %>% add_recipe(pixel_recipe)
+lda_wf <- workflow() %>% add_model(lda_spec) %>% add_recipe(pixel_recipe)
+qda_wf <- workflow() %>% add_model(qda_spec) %>% add_recipe(pixel_recipe)
+
+log_fit <- fit(log_wf, data = haititrain)
+lda_fit <- fit(lda_wf, data = haititrain)
+qda_fit <- fit(qda_wf, data = haititrain)
+
+
+```
+
+```{r}
+library(tidymodels)
+
+set.seed(123)
+resamples <- vfold_cv(haititrain, v = 10, strata = Class)
+custom_metrics <- metric_set(accuracy, roc_auc)
+
+pixel_recipe <- recipe(Class ~ Red + Green + Blue, data = haititrain) %>% step_normalize(all_predictors())
+
+log_spec <- logistic_reg() %>% set_engine("glm") %>% set_mode("classification")
+
+
+log_wf <- workflow() %>% add_model(log_spec) %>% add_recipe(pixel_recipe)
+
+cv_control <- control_resamples(save_pred = TRUE)
+
+log_cv <- fit_resamples(
+  log_wf,
+  resamples = resamples,
+  metrics = custom_metrics,
+  control = cv_control
+)
+
+lda_cv <- fit_resamples(
+  lda_wf,
+  resamples = resamples,
+  metrics = custom_metrics,
+  control = cv_control
+)
+
+qda_cv <- fit_resamples(
+  qda_wf,
+  resamples = resamples,
+  metrics = custom_metrics,
+  control = cv_control
+)
+
+
+cv_metrics <- bind_rows(
+collect_metrics(log_cv) %>% mutate(model="Log"),
+collect_metrics(lda_cv) %>% mutate(model="LDA"),
+collect_metrics(qda_cv) %>% mutate(model="QDA")
+)
+
+cv_metrics %>%
+dplyr::select(model, .metric, mean) %>%
+pivot_wider(names_from=.metric, values_from=mean) %>%
+knitr::kable(caption="Cross-validation performance metrics", digits=5)
+
+```
+```{r}
+roc_cv_plot <- function(model_cv, model_name) {
+cv_predictions <- collect_predictions(model_cv)
+cv_roc <- cv_predictions %>%
+roc_curve(truth=Class, .pred_Class, event_level="first")
+g <- autoplot(cv_roc) +
+labs(title=model_name)
+return(g)
+}
+
+bind_rows(
+collect_predictions(log_cv) %>% mutate(model="Logistic regression"),
+collect_predictions(lda_cv) %>% mutate(model="LDA"),
+collect_predictions(qda_cv) %>% mutate(model="QDA")
+) %>%
+group_by(model) %>%
+  roc_curve(truth = Class, `.pred_Blue Tarp`, event_level = "first") %>%
+  autoplot() +
+  labs(title = "ROC Curves on Training Data", color = "Model")
+```
+
+
+
+```{r}
+library(yardstick)
+library(probably)
+
+get_j_curve <- function(fitted_model, data, model_name) {
+  probs <- predict(fitted_model, new_data = haititrain, type = "prob")
+  truth_df <- data.frame(Class = haititrain$Class)  
+
+  combined <- bind_cols(probs, truth_df)
+
+  threshold_perf(
+    combined,
+    truth = Class,
+    estimate = `.pred_Blue Tarp`,
+    thresholds = seq(0.05, 0.95, 0.01),
+    metrics = metric_set(j_index),
+    event_level = "first"
+  ) %>%
+    mutate(model = model_name)
+}
+
+j_logreg <- get_j_curve(log_fit, haititrain, "Logistic")
+j_lda    <- get_j_curve(lda_fit, haititrain, "LDA")
+j_qda    <- get_j_curve(qda_fit, haititrain, "QDA")
+
+j_all <- bind_rows(j_logreg, j_lda, j_qda)
+
+ggplot(j_all, aes(x = .threshold, y = .estimate, color = model)) +
+  geom_line(size = 1) +
+  geom_vline(
+    data = j_all %>% group_by(model) %>% slice_max(.estimate),
+    aes(xintercept = .threshold),
+    linetype = "dashed"
+  ) +
+  labs(
+    title = "J-index vs. Threshold (Haiti Blue Tarp Detection)",
+    x = "Threshold",
+    y = "J Index"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+performance_all <- function(model, data, model_name) {
+
+  probs <- predict(model, data, type = "prob") %>% bind_cols(data.frame(Class = haititrain$Class)) 
+
+  threshold_perf(
+  probs,
+  truth = Class,
+  estimate = `.pred_Blue Tarp`,
+  thresholds = seq(0.05, 0.95, 0.01),
+  metrics = metric_set(j_index, accuracy, sens, spec,f_meas),
+  event_level = "first"
+) %>%
+    mutate(model = model_name)
+}
+
+performance_logreg <- performance_all(log_fit, haititrain, "Logistic-Train")
+performance_lda    <- performance_all(lda_fit, haititrain, "LDA-Train")
+performance_qda    <- performance_all(qda_fit, haititrain, "QDA-Train")
+
+performance_all_threshold <- bind_rows(performance_logreg, performance_lda, performance_qda)
+
+best_thresholds <- performance_all_threshold %>%
+  filter(.metric == "j_index") %>%
+  group_by(model) %>%
+  slice_max(.estimate, with_ties = FALSE) %>%
+  dplyr::select(model, best_threshold = .threshold)
+
+
+final_metrics <- performance_all_threshold %>%
+  inner_join(best_thresholds, by = "model") %>%
+  filter(.threshold == best_threshold) %>%
+  dplyr::select(model, metric = .metric, threshold = .threshold, estimate = .estimate) %>%
+  pivot_wider(names_from = metric, values_from = estimate)
+
+final_metrics
+
+```
+
+```{r}
+final_metrics %>%
+  arrange(desc(j_index)) %>%
+  kable(
+    caption = "Final Performance Metrics at Optimal Threshold (J-index)",
+    digits = 3,
+    col.names = c("Model", "Threshold", "Accuracy", "J-index", "Sensitivity", "Specificity", "F_meas")
+  ) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+
+```{r}
+lda_thresh <- best_thresholds %>% filter(model == "LDA-Train") %>% pull(best_threshold)
+log_thresh <- best_thresholds %>% filter(model == "Logistic-Train") %>% pull(best_threshold)
+qda_thresh <- best_thresholds %>% filter(model == "QDA-Train") %>% pull(best_threshold)
+
+predict_holdout_thresholded <- function(model_fit, threshold, model_name) {
+  predict(model_fit, new_data = holdout_class, type = "prob") %>%
+    rename(.pred_Blue_Tarp = `.pred_Blue Tarp`) %>%
+    bind_cols(holdout_class) %>%
+    mutate(
+      pred_class = if_else(.pred_Blue_Tarp > threshold, "blue_tarp", "non_blue"),
+      model = model_name
+    )
+}
+
+log_preds <- predict_holdout_thresholded(log_fit, log_thresh, "Logistic")
+lda_preds <- predict_holdout_thresholded(lda_fit, lda_thresh, "LDA")
+qda_preds <- predict_holdout_thresholded(qda_fit, qda_thresh, "QDA")
+
+log_thresh <- best_thresholds %>% filter(model == "Logistic-Train") %>% pull(best_threshold)
+lda_thresh <- best_thresholds %>% filter(model == "LDA-Train") %>% pull(best_threshold)
+qda_thresh <- best_thresholds %>% filter(model == "QDA-Train") %>% pull(best_threshold)
+
+log_preds <- predict_holdout_thresholded(log_fit, log_thresh, "Logistic")
+lda_preds <- predict_holdout_thresholded(lda_fit, lda_thresh, "LDA")
+qda_preds <- predict_holdout_thresholded(qda_fit, qda_thresh, "QDA")
+
+holdout_preds_all<-bind_rows(log_preds, lda_preds, qda_preds)
+
+holdout_metrics <- holdout_preds_all %>%
+  mutate(
+    pred_class = recode(pred_class,
+                        "blue_tarp" = "Blue Tarp",
+                        "non_blue" = "Non-Tarp"),
+    pred_class = factor(pred_class, levels = c("Non-Tarp", "Blue Tarp")),
+    Class = factor(Class, levels = c("Non-Tarp", "Blue Tarp"))
+  ) %>%
+  group_by(model) %>%
+  summarise(
+    accuracy    = accuracy_vec(truth = Class, estimate = pred_class),
+    sensitivity = sens_vec(truth = Class, estimate = pred_class),
+    specificity = spec_vec(truth = Class, estimate = pred_class),
+    f_meas      = f_meas_vec(truth = Class, estimate = pred_class, event_level = "first"),
+    j_index     = sensitivity + specificity - 1,
+    .groups     = "drop"
+  )
+
+holdout_metrics
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+lda_preds_holdout <- holdout_class %>%
+  bind_cols(predict(lda_fit, new_data = holdout_class))
+
+lda_preds_holdout <- lda_preds_holdout %>%
+  mutate(
+    color = rgb(Red, Green, Blue, maxColorValue = 255)
+  )
+
+predicted_blue_plot <- lda_preds_holdout %>%
+  filter(.pred_class == "Blue Tarp")
+
+g3 <- ggplot(predicted_blue_plot, aes(x = Red, y = Green)) +
+  geom_point(aes(color = color), size = 2, alpha = 0.25) +
+  scale_color_identity() +
+  theme_minimal() +
+  labs(title = "LDA - Predicted Blue Tarp Colors (Test Set)")
+
+incorrect_blue_plot <- lda_preds_holdout %>%
+  filter(.pred_class == "Blue Tarp" & Class == "Non-Tarp")
+
+g4 <- ggplot(incorrect_blue_plot, aes(x = Red, y = Green)) +
+  geom_point(aes(color = color), size = 2, alpha = 0.25) +
+  scale_color_identity() +
+  theme_minimal() +
+  labs(title = "LDA - Incorrectly Predicted Blue Tarp Colors (Test Set)")
+
+
+g3
+g4
+
+```
+
+```{r}
+
+qda_preds_holdout <- holdout_class %>%
+  bind_cols(predict(qda_fit, new_data = holdout_class)) %>%
+  mutate(color = rgb(Red, Green, Blue, maxColorValue = 255))
+
+
+qda_predicted_blue <- qda_preds_holdout %>%
+  filter(.pred_class == "Blue Tarp")
+
+g3_qda <- ggplot(qda_predicted_blue, aes(x = Red, y = Green)) +
+  geom_point(aes(color = color), size = 2, alpha = 0.25) +
+  scale_color_identity() +
+  theme_minimal() +
+  labs(title = "QDA - Predicted Blue Tarp Colors (Test Set)")
+
+
+qda_incorrect_blue <- qda_preds_holdout %>%
+  filter(.pred_class == "Blue Tarp" & Class == "Non-Tarp")
+
+g4_qda <- ggplot(qda_incorrect_blue, aes(x = Red, y = Green)) +
+  geom_point(aes(color = color), size = 2, alpha = 0.25) +
+  scale_color_identity() +
+  theme_minimal() +
+  labs(title = "QDA - Incorrectly Predicted Blue Tarp Colors (Test Set)")
+
+
+log_preds_holdout <- holdout_class %>%
+  bind_cols(predict(log_fit, new_data = holdout_class)) %>%
+  mutate(color = rgb(Red, Green, Blue, maxColorValue = 255))
+
+
+log_predicted_blue <- log_preds_holdout %>%
+  filter(.pred_class == "Blue Tarp")
+
+g3_log <- ggplot(log_predicted_blue, aes(x = Red, y = Green)) +
+  geom_point(aes(color = color), size = 2, alpha = 0.25) +
+  scale_color_identity() +
+  theme_minimal() +
+  labs(title = "Logistic Regression - Predicted Blue Tarp Colors (Test Set)")
+
+
+log_incorrect_blue <- log_preds_holdout %>%
+  filter(.pred_class == "Blue Tarp" & Class == "Non-Tarp")
+
+g4_log <- ggplot(log_incorrect_blue, aes(x = Red, y = Green)) +
+  geom_point(aes(color = color), size = 2, alpha = 0.25) +
+  scale_color_identity() +
+  theme_minimal() +
+  labs(title = "Logistic Regression - Incorrectly Predicted Blue Tarp Colors (Test Set)")
+
+g3_qda
+g4_qda
+g3_log
+g4_log
+```
+
+
+
+```{r}
+holdout_metrics %>%
+  arrange(desc(j_index)) %>%
+  kable(
+    caption = "Performance Metrics at Optimal Threshold on Test Data",
+    digits = 5,
+    col.names = c("Model", "Accuracy", "Sensitivity", "Specificity","F_meas", "J-index")
+  ) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed"))
+
+```
+
+```{r}
+holdout_probs_all <- bind_rows(log_preds, lda_preds, qda_preds)
+
+
+holdout_probs_all <- holdout_probs_all %>%
+  mutate(Class = factor(Class, levels = c("Non-Tarp", "Blue Tarp")))
+
+
+roc_data <- holdout_probs_all %>%
+  group_by(model) %>%
+  roc_curve(truth = Class, .pred_Blue_Tarp, event_level = "second")
+
+autoplot(roc_data) +
+  labs(
+    title = "ROC Curves on Test Data",
+    x = "1 - Specificity",
+    y = "Sensitivity",
+    color = "Model"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+roc_auc_results <- holdout_probs_all %>%
+  group_by(model) %>%
+  roc_auc(truth = Class, .pred_Blue_Tarp, event_level = "second") %>%
+  ungroup() %>%
+  select(model, roc_auc = .estimate)
+
+roc_auc_results %>%
+  mutate(roc_auc = round(roc_auc, 5)) %>%
+  kable(
+    caption = "ROC AUC Values for Each Model on Test Set",
+    col.names = c("Model", "ROC AUC"),
+    digits = 5
+  ) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+```{r}
+pca_recipe_train <- recipe(Class ~ Red + Green + Blue, data = haititrain) %>%
+  step_normalize(all_predictors()) %>%
+  step_pca(all_predictors(), num_comp = 2) %>% prep()
+
+pca_pred_train <- bake(pca_recipe_train, new_data = haititrain)
+
+
+logreg_2d <- logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification") %>%
+  fit(Class ~ PC1 + PC2, data = pca_pred_train)
+
+grid <- expand.grid(
+  PC1 = seq(min(pca_pred_train$PC1), max(pca_pred_train$PC1), length.out = 100),
+  PC2 = seq(min(pca_pred_train$PC2), max(pca_pred_train$PC2), length.out = 100)
+)
+
+grid_preds <- grid %>%
+  mutate(pred = predict(logreg_2d, new_data = grid)$.pred_class)
+
+ggplot(pca_pred_train, aes(x = PC1, y = PC2, color = Class)) +
+  geom_point(alpha = 0.6) +
+  geom_contour(data = grid_preds, aes(z = as.numeric(pred == "Blue Tarp")),
+               breaks = 0.5, color = "black") +
+  labs(title = "Logistic Regression Decision Boundary on Training Data") +
+  theme_minimal()
+```
+```{r}
+lda_fit_2d <- discrim_linear() %>%
+  set_engine("MASS") %>%
+  fit(Class ~ PC1 + PC2, data = pca_pred_train)
+
+grid_vals <- expand.grid(
+  PC1 = seq(min(pca_pred_train$PC1), max(pca_pred_train$PC1), length.out = 200),
+  PC2 = seq(min(pca_pred_train$PC2), max(pca_pred_train$PC2), length.out = 200)
+)
+
+grid_vals$Class <- predict(lda_fit_2d, new_data = grid_vals)$.pred_class
+
+
+ggplot(pca_pred_train, aes(x = PC1, y = PC2)) +
+  geom_point(aes(color = Class), alpha = 0.4) +
+  geom_contour(data = grid_vals, aes(z = as.numeric(Class == "Blue Tarp")), 
+               breaks = 0.5, color = "black") +
+  labs(title = "LDA Decision Boundary on Training Data", color = "Class") +
+  theme_minimal()
+```
+```{r}
+qda_fit_2d <- discrim_quad() %>%
+  set_engine("MASS") %>%
+  fit(Class ~ PC1 + PC2, data = pca_pred_train)
+
+grid_vals_qda <- grid_vals %>%
+  select(PC1, PC2) %>%
+  mutate(Class = predict(qda_fit_2d, new_data = .)$.pred_class)
+
+ggplot(pca_pred_train, aes(x = PC1, y = PC2)) +
+  geom_point(aes(color = Class), alpha = 0.4) +
+  geom_contour(data = grid_vals_qda, aes(z = as.numeric(Class == "Blue Tarp")), 
+               breaks = 0.5, color = "black") +
+  labs(title = "QDA Decision Boundary on Training Data", color = "Class") +
+  theme_minimal()
+
+```
+```{r}
+grid_vals <- expand.grid(
+  Red   = seq(min(holdout_class$Red), max(holdout_class$Red), length.out = 100),
+  Green = seq(min(holdout_class$Green), max(holdout_class$Green), length.out = 100),
+  Blue  = seq(min(holdout_class$Blue), max(holdout_class$Blue), length.out = 100)
+)
+
+grid_vals <- grid_vals %>%
+  mutate(across(everything(), as.integer))
+
+grid_preds_lda <- grid_vals %>%
+  bind_cols(predict(lda_fit, new_data = grid_vals))
+
+grid_preds_qda <- grid_vals %>%
+  bind_cols(predict(qda_fit, new_data = grid_vals))
+
+grid_preds_log <- grid_vals %>%
+  bind_cols(predict(log_fit, new_data = grid_vals))
+
+plot_decision_boundary <- function(grid_preds, holdout_data, model_name) {
+  ggplot() +
+    geom_tile(data = grid_preds, aes(x = Red, y = Green, fill = .pred_class), alpha = 0.3) +
+    geom_point(data = holdout_data, aes(x = Red, y = Green, color = Class), shape = 21, size = 2) +
+    labs(
+      title = paste("Decision Boundary on Test Set -", model_name),
+      fill = "Predicted Class",
+      color = "True Class"
+    ) +
+    theme_minimal()
+}
+
+plot_decision_boundary(grid_preds_lda, holdout_class, "LDA")
+plot_decision_boundary(grid_preds_qda, holdout_class, "QDA")
+plot_decision_boundary(grid_preds_log, holdout_class, "Logistic Regression")
+```
+```{r}
+lda_preds_holdout <- predict(lda_fit, holdout_class) %>%
+  bind_cols(holdout_class) %>%
+  mutate(
+    match = ifelse(.pred_class == Class, "Correct", "Incorrect")
+  )
+
+ggplot(lda_preds_holdout, aes(x = Red, y = Green)) +
+  geom_point(aes(color = match, shape = Class), alpha = 0.4, size = 0.8) +
+  scale_color_manual(values = c("Correct" = "darkgreen", "Incorrect" = "red")) +
+  labs(
+    title = "LDA Predictions on Test Set",
+    color = "Prediction Match",
+    shape = "True Class"
+  ) +
+  theme_minimal()
+
+```
+```{r}
+qda_preds_holdout <- predict(qda_fit, holdout_class) %>%
+  bind_cols(holdout_class) %>%
+  mutate(
+    match = ifelse(.pred_class == Class, "Correct", "Incorrect")
+  )
+
+ggplot(qda_preds_holdout, aes(x = Red, y = Green)) +
+  geom_point(aes(color = match, shape = Class), alpha = 0.4, size = 0.8) +
+  scale_color_manual(values = c("Correct" = "darkgreen", "Incorrect" = "red")) +
+  labs(
+    title = "QDA Predictions on Test Set",
+    color = "Prediction Match",
+    shape = "True Class"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+log_preds_holdout <- predict(log_fit, holdout_class) %>%
+  bind_cols(holdout_class) %>%
+  mutate(
+    match = ifelse(.pred_class == Class, "Correct", "Incorrect")
+  )
+
+ggplot(log_preds_holdout, aes(x = Red, y = Green)) +
+  geom_point(aes(color = match, shape = Class), alpha = 0.4, size = 0.8) +
+  scale_color_manual(values = c("Correct" = "darkgreen", "Incorrect" = "red")) +
+  labs(
+    title = "Logistic Regression Predictions on Test Set",
+    color = "Prediction Match",
+    shape = "True Class"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+
+holdout_preds_lda <- holdout_class %>%
+  bind_cols(predict(lda_fit, new_data = holdout_class))
+
+holdout_preds_qda <- holdout_class %>%
+  bind_cols(predict(qda_fit, new_data = holdout_class))
+
+holdout_preds_log <- holdout_class %>%
+  bind_cols(predict(log_fit, new_data = holdout_class))
+
+plot_prediction_match <- function(pred_df, model_name) {
+  pred_df <- pred_df %>%
+    mutate(
+      match = ifelse(Class == .pred_class, "Correct", "Incorrect")
+    )
+  
+  ggplot(pred_df, aes(x = Red, y = Green)) +
+    geom_point(aes(color = match, shape = Class), alpha = 0.5, size = 1.5) +
+    scale_color_manual(values = c("Correct" = "darkgreen", "Incorrect" = "red")) +
+    labs(
+      title = paste("Prediction Match on Test Set -", model_name),
+      color = "Prediction Match",
+      shape = "True Class"
+    ) +
+    theme_minimal()
+}
+
+
+plot_prediction_match(holdout_preds_lda, "LDA")
+plot_prediction_match(holdout_preds_qda, "QDA")
+plot_prediction_match(holdout_preds_log, "Logistic Regression")
+
+```
+```{r}
+library(yardstick)
+library(dplyr)
+
+
+compute_recall <- function(pred_df, model_name) {
+  pred_df <- pred_df %>%
+    mutate(
+      Class = factor(Class, levels = c("Non-Tarp", "Blue Tarp")),
+      .pred_class = factor(.pred_class, levels = c("Non-Tarp", "Blue Tarp"))
+    )
+  
+  recall_val <- recall(pred_df, truth = Class, estimate = .pred_class, event_level = "second")
+  
+  recall_val %>%
+    mutate(model = model_name)
+}
+
+
+lda_preds <- holdout_class %>% bind_cols(predict(lda_fit, new_data = holdout_class))
+qda_preds <- holdout_class %>% bind_cols(predict(qda_fit, new_data = holdout_class))
+log_preds <- holdout_class %>% bind_cols(predict(log_fit, new_data = holdout_class))
+
+
+recall_lda <- compute_recall(lda_preds, "LDA")
+recall_qda <- compute_recall(qda_preds, "QDA")
+recall_log <- compute_recall(log_preds, "Logistic Regression")
+
+
+recall_results <- bind_rows(recall_lda, recall_qda, recall_log) %>%
+  select(model, recall = .estimate)
+
+recall_results
+
+```
+```{r}
+recall_results %>%
+  kable(
+    caption = "Recall Values for LDA, QDA, and Logistic Regression on Test Set",
+    digits = 3,
+    col.names = c("Model", "Recall")
+  ) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed"))
+
+```
+
+```{r}
+library(yardstick)
+library(dplyr)
+
+
+compute_confmat <- function(pred_df, model_name) {
+  pred_df <- pred_df %>%
+    mutate(
+      Class = factor(Class, levels = c("Non-Tarp", "Blue Tarp")),
+      .pred_class = factor(.pred_class, levels = c("Non-Tarp", "Blue Tarp"))
+    )
+  
+  cm <- conf_mat(pred_df, truth = Class, estimate = .pred_class)
+  
+  list(model = model_name, cm = cm)
+}
+
+
+lda_preds <- holdout_class %>% bind_cols(predict(lda_fit, new_data = holdout_class))
+qda_preds <- holdout_class %>% bind_cols(predict(qda_fit, new_data = holdout_class))
+log_preds <- holdout_class %>% bind_cols(predict(log_fit, new_data = holdout_class))
+
+
+lda_cm <- compute_confmat(lda_preds, "LDA")
+qda_cm <- compute_confmat(qda_preds, "QDA")
+log_cm <- compute_confmat(log_preds, "Logistic Regression")
+
+
+lda_cm$cm
+qda_cm$cm
+log_cm$cm
+
+```
+```{r}
+autoplot(lda_cm$cm, type = "heatmap") +
+  labs(title = "Confusion Matrix - LDA (Test Set)")
+
+autoplot(qda_cm$cm, type = "heatmap") +
+  labs(title = "Confusion Matrix - QDA (Test Set)")
+
+autoplot(log_cm$cm, type = "heatmap") +
+  labs(title = "Confusion Matrix - Logistic Regression (Test Set)")
+```
+# SVM
+
+```{r}
+library(tidymodels)
+
+svm_recipe <- recipe(Class ~ Red + Green + Blue, data = haititrain) %>%
+  step_normalize(all_predictors())
+
+svm_spec_rbf <- svm_rbf(mode = "classification") %>%
+  set_engine("kernlab", prob.model = TRUE)
+
+
+svm_wf_rbf <- workflow() %>%
+  add_recipe(svm_recipe) %>%
+  add_model(svm_spec_rbf)
+
+
+svm_fit_rbf <- fit(svm_wf_rbf, data = haititrain)
+
+svm_spec_linear <- svm_linear(mode = "classification") %>%
+  set_engine("kernlab")
+
+svm_wf_linear <- workflow() %>%
+  add_recipe(svm_recipe) %>%
+  add_model(svm_spec_linear)
+
+svm_fit_linear <- fit(svm_wf_linear, data = haititrain)
+
+svm_spec_poly <- svm_poly(mode = "classification") %>%
+  set_engine("kernlab")
+
+svm_wf_poly <- workflow() %>%
+  add_recipe(svm_recipe) %>%
+  add_model(svm_spec_poly)
+
+svm_fit_poly <- fit(svm_wf_poly, data = haititrain)
+
+
+```
+```{r}
+# RBF
+svm_preds_rbf_train <- predict(svm_fit_rbf, haititrain, type = "prob") %>%
+  bind_cols(predict(svm_fit_rbf, haititrain) %>% rename(.pred_class = .pred_class)) %>%
+  bind_cols(haititrain %>% select(Class))
+
+# Linear
+svm_preds_linear_train <- predict(svm_fit_linear, haititrain, type = "prob") %>%
+  bind_cols(haititrain %>% select(Class))
+
+# Polynomial
+svm_preds_poly_train <- predict(svm_fit_poly, haititrain, type = "prob") %>%
+  bind_cols(haititrain %>% select(Class))
+
+```
+
+```{r}
+svm_preds_rbf_train <- svm_preds_rbf_train %>%
+  mutate(Class = factor(Class, levels = c("Blue Tarp", "Non-Tarp")))
+
+svm_preds_linear_train <- svm_preds_linear_train %>%
+  mutate(Class = factor(Class, levels = c("Blue Tarp", "Non-Tarp")))
+
+svm_preds_poly_train <- svm_preds_poly_train %>%
+  mutate(Class = factor(Class, levels = c("Blue Tarp", "Non-Tarp")))
+```
+
+```{r}
+library(yardstick)
+
+svm_metrics <- metric_set(accuracy, sens, spec, precision, recall, f_meas, roc_auc)
+
+# metrics for SVM RBF
+svm_rbf_train_metrics <- svm_preds_rbf_train %>%
+  mutate(.pred_class = if_else(`.pred_Blue Tarp` >= 0.5, "Blue Tarp", "Non-Tarp"),
+         .pred_class = factor(.pred_class, levels = c("Blue Tarp", "Non-Tarp")),
+         Class = factor(Class, levels = c("Blue Tarp", "Non-Tarp"))) %>%
+  svm_metrics(truth = Class, estimate = .pred_class, `.pred_Blue Tarp`, event_level = "first") %>%
+  mutate(model = "SVM RBF")
+
+# metrics for SVM Linear
+svm_linear_train_metrics <- svm_preds_linear_train %>%
+  mutate(.pred_class = if_else(`.pred_Blue Tarp` >= 0.5, "Blue Tarp", "Non-Tarp"),
+         .pred_class = factor(.pred_class, levels = c("Blue Tarp", "Non-Tarp")),
+         Class = factor(Class, levels = c("Blue Tarp", "Non-Tarp"))) %>%
+  svm_metrics(truth = Class, estimate = .pred_class, `.pred_Blue Tarp`, event_level = "first") %>%
+  mutate(model = "SVM Linear")
+
+# metrics for SVM Polynomial
+svm_poly_train_metrics <- svm_preds_poly_train %>%
+  mutate(.pred_class = if_else(`.pred_Blue Tarp` >= 0.5, "Blue Tarp", "Non-Tarp"),
+         .pred_class = factor(.pred_class, levels = c("Blue Tarp", "Non-Tarp")),
+         Class = factor(Class, levels = c("Blue Tarp", "Non-Tarp"))) %>%
+  svm_metrics(truth = Class, estimate = .pred_class, `.pred_Blue Tarp`, event_level = "first") %>%
+  mutate(model = "SVM Polynomial")
+```
+
+```{r}
+library(tidyr)
+library(dplyr)
+
+svm_train_results <- bind_rows(
+  svm_rbf_train_metrics,
+  svm_linear_train_metrics,
+  svm_poly_train_metrics
+) %>%
+  select(model, .metric, .estimate) %>%
+  pivot_wider(names_from = .metric, values_from = .estimate)
+
+svm_train_results
+
+```
+
+```{r}
+library(knitr)
+library(kableExtra)
+
+svm_train_results %>%
+  kable(
+    caption = "SVM Training Performance Metrics",
+    digits = 4,
+    format = "html"
+  ) %>%
+  kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("striped", "hover", "condensed", "responsive")
+  )
+```
+
+```{r}
+get_svm_metrics <- function(preds, model_name, threshold = 0.5) {
+  preds <- preds %>%
+    mutate(
+      Class = factor(Class, levels = c("blue_tarp", "non_blue")),
+      pred_class = if_else(`.pred_Blue Tarp` > threshold, "blue_tarp", "non_blue") %>% factor(levels = c("blue_tarp", "non_blue"))
+    )
+
+  tibble(
+    model = model_name,
+    accuracy = accuracy_vec(preds$Class, preds$pred_class),
+    sensitivity = sens_vec(preds$Class, preds$pred_class, event_level = "first"),
+    specificity = spec_vec(preds$Class, preds$pred_class, event_level = "first"),
+    precision = precision_vec(preds$Class, preds$pred_class, event_level = "first"),
+    recall = recall_vec(preds$Class, preds$pred_class, event_level = "first"),
+    f_meas = f_meas_vec(preds$Class, preds$pred_class, event_level = "first"),
+    roc_auc = roc_auc_vec(preds$Class, preds$`.pred_Blue Tarp`, event_level = "first")
+  )
+}
+
+# Compute for each SVM model
+svm_metrics_rbf <- get_svm_metrics(svm_preds_rbf, "SVM RBF")
+svm_metrics_linear <- get_svm_metrics(linear_preds, "SVM Linear")
+svm_metrics_poly <- get_svm_metrics(poly_preds, "SVM Polynomial")
+
+# Combine results
+svm_holdout_metrics <- bind_rows(svm_metrics_rbf, svm_metrics_linear, svm_metrics_poly)
+
+# Display nicely
+svm_holdout_metrics %>%
+  kable(caption = "SVM Test Set Performance", digits = 4) %>%
+  kable_styling(full_width = FALSE)
+
+
+```
+
+```{r}
+library(dplyr)
+library(yardstick)
+library(ggplot2)
+
+roc_data_train <- bind_rows(
+  svm_preds_rbf_train %>% mutate(model = "SVM RBF"),
+  svm_preds_linear_train %>% mutate(model = "SVM Linear"),
+  svm_preds_poly_train %>% mutate(model = "SVM Polynomial")
+)
+
+roc_curve_train <- roc_data_train %>%
+  group_by(model) %>%
+  roc_curve(truth = Class, `.pred_Blue Tarp`, event_level = "first")
+
+autoplot(roc_curve_train) +
+  labs(
+    title = "ROC Curves on Training Data",
+    subtitle = "SVM RBF, Linear, and Polynomial Kernels",
+    color = "Model"
+  )
+
+```
+
+```{r}
+roc_data_holdout <- bind_rows(
+  svm_preds_rbf %>% mutate(model = "SVM RBF"),
+  linear_preds %>% mutate(model = "SVM Linear"),
+  poly_preds %>% mutate(model = "SVM Polynomial")
+)
+
+roc_data_holdout <- bind_rows(
+  svm_preds_rbf %>% mutate(model = "SVM RBF"),
+  linear_preds %>% mutate(model = "SVM Linear"),
+  poly_preds %>% mutate(model = "SVM Polynomial")
+) %>%
+  mutate(Class = factor(Class, levels = c("blue_tarp", "non_blue")))  # Convert here
+
+roc_curve_holdout <- roc_data_holdout %>%
+  group_by(model) %>%
+  roc_curve(truth = Class, `.pred_Blue Tarp`, event_level = "first")
+
+autoplot(roc_curve_holdout) +
+  labs(
+    title = "ROC Curves on Test Data",
+    subtitle = "SVM RBF, Linear, and Polynomial Kernels",
+    color = "Model"
+  )
+```
+
+```{r}
+pca_overlay <- pca_pred_holdout %>%
+  mutate(
+    match = ifelse(Class == .pred_class, "Correct", "Incorrect")
+  )
+
+ggplot(pca_overlay, aes(x = PC1, y = PC2)) +
+  geom_point(aes(color = match, shape = Class), alpha = 0.2) +
+  scale_color_manual(values = c("Correct" = "darkgreen", "Incorrect" = "red")) +
+  labs(
+    title = "Test Set: True vs Predicted Class Overlay (SVM RBF)",
+    color = "Prediction Match",
+    shape = "True Class"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+pca_recipe_holdout <- recipe(Class ~ Red + Green + Blue, data = haititrain) %>%
+  step_normalize(all_predictors()) %>%
+  step_pca(all_predictors(), num_comp = 2) %>%
+  prep()
+
+pca_pred_linear_holdout <- bake(pca_recipe_holdout, new_data = svm_preds_linear_holdout)
+
+
+svm_preds_linear_holdout <- predict(svm_fit_linear, holdout_class) %>%
+  bind_cols(holdout_class)
+
+pca_pred_linear_holdout <- bake(pca_recipe_holdout, new_data = svm_preds_linear_holdout)
+
+
+pca_pred_linear_holdout$.pred_class <- svm_preds_linear_holdout$.pred_class
+
+pca_overlay_linear <- pca_pred_linear_holdout %>%
+  mutate(match = ifelse(Class == .pred_class, "Correct", "Incorrect"))
+
+ggplot(pca_overlay_linear, aes(x = PC1, y = PC2)) +
+  geom_point(aes(color = match, shape = Class), alpha = 0.2) +
+  scale_color_manual(values = c("Correct" = "darkgreen", "Incorrect" = "red")) +
+  labs(
+    title = "Test Set: True vs Predicted Class Overlay (SVM Linear)",
+    color = "Prediction Match",
+    shape = "True Class"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+svm_preds_poly_holdout <- predict(svm_fit_poly, holdout_class, type = "class") %>%
+  bind_cols(holdout_class) %>%
+  rename(.pred_class = .pred_class)
+
+
+pca_pred_poly_holdout <- bake(pca_recipe_holdout, new_data = svm_preds_poly_holdout)
+
+# Add .pred_class manually
+pca_pred_poly_holdout$.pred_class <- svm_preds_poly_holdout$.pred_class
+
+pca_overlay_poly <- pca_pred_poly_holdout %>%
+  mutate(match = ifelse(Class == .pred_class, "Correct", "Incorrect"))
+
+ggplot(pca_overlay_poly, aes(x = PC1, y = PC2)) +
+  geom_point(aes(color = match, shape = Class), alpha = 0.2) +
+  scale_color_manual(values = c("Correct" = "darkgreen", "Incorrect" = "red")) +
+  labs(
+    title = "Test Set: True vs Predicted Class Overlay (SVM Polynomial)",
+    color = "Prediction Match",
+    shape = "True Class"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+compute_confmat <- function(pred_df, model_name) {
+  pred_df <- pred_df %>%
+    mutate(
+      Class = factor(Class, levels = c("Non-Tarp", "Blue Tarp")),
+      .pred_class = factor(.pred_class, levels = c("Non-Tarp", "Blue Tarp"))
+    )
+  
+  cm <- conf_mat(pred_df, truth = Class, estimate = .pred_class)
+  
+  list(model = model_name, cm = cm)
+}
+
+svm_preds_rbf_holdout <- holdout_class %>% bind_cols(predict(svm_fit_rbf, new_data = holdout_class))
+svm_preds_linear_holdout <- holdout_class %>% bind_cols(predict(svm_fit_linear, new_data = holdout_class))
+svm_preds_poly_holdout <- holdout_class %>% bind_cols(predict(svm_fit_poly, new_data = holdout_class))
+
+
+svm_rbf_cm <- compute_confmat(svm_preds_rbf_holdout, "SVM RBF")
+svm_linear_cm <- compute_confmat(svm_preds_linear_holdout, "SVM Linear")
+svm_poly_cm <- compute_confmat(svm_preds_poly_holdout, "SVM Polynomial")
+
+
+svm_rbf_cm$cm
+svm_linear_cm$cm
+svm_poly_cm$cm
+
+
+autoplot(svm_rbf_cm$cm, type = "heatmap") + labs(title = "Confusion Matrix - SVM RBF (Test Set)")
+autoplot(svm_linear_cm$cm, type = "heatmap") + labs(title = "Confusion Matrix - SVM Linear (Test Set)")
+autoplot(svm_poly_cm$cm, type = "heatmap") + labs(title = "Confusion Matrix - SVM Polynomial (Test Set)")
+```
+
+
+# KNN
+
+```{python}
+import matplotlib.pyplot as plt
+import numpy as np
+blue_example=True
+
+if blue_example:
+    filename = 'orthovnir067_ROI_Blue_Tarps.txt'
+else:
+    filename = 'orthovnir067_ROI_NOT_Blue_Tarps.txt'
+
+lines = open(filename).readlines()
+
+lines = lines[8:]
+lines[0]
+xx = []
+yy = []
+rgbl = []
+coord_x = 0
+coord_y = 0
+
+for line in lines:
+    items = line.split()
+    rgbl.append( (int(items[7])/256,int(items[8])/256,int(items[9])/256) )
+
+rgbl = sorted(rgbl)
+
+for point in rgbl:
+    xx.append(coord_x)
+    yy.append(coord_y)
+    if coord_x == 100:
+        coord_x = 0
+        coord_y += 1
+    else:
+        coord_x += 1
+        
+# Define X and Y coordinates for the points
+x = np.array(xx)
+y = np.array(yy)
+
+# Define RGB colors for each point (values must be between 0 and 1)
+# Each inner tuple represents (Red, Green, Blue)
+colors = np.array(rgbl)
+
+# Create the scatter plot
+plt.figure(figsize=(8, 6))
+plt.scatter(x, y, c=colors,
+            s=20)
+
+# Add labels and title
+plt.xlabel("X-axis")
+plt.ylabel("Y-axis")
+plt.title(filename)
+plt.grid(True)
+
+# Display the plot
+plt.show()
+
+```
+
+
+```{python}
+from PIL import Image
+
+image_path = "orthovnir078_makeshift_villiage1.jpg"  # Replace with the actual path to your JPG file
+with Image.open(image_path) as img:
+    img = img.convert('RGB')  # Ensure the image is in RGB mode
+
+width, height = img.size
+
+rgb_values = []
+for y in range(height):
+    for x in range(width):
+        r, g, b = img.getpixel((x, y))
+        rgb_values.append((r, g, b))
+
+
+#print(rgb_values)
+
+with open('image_rgb.txt', 'w') as target:
+    for rgb_value in rgb_values:
+        target.write(f"{rgb_value[0]} {rgb_value[1]} {rgb_value[2]}\n")
+
+
+lines = open('LOGthepreds.csv', 'r').readlines()
+
+updated_rgb_values = []
+for line,rgb in zip(lines[1:],rgb_values):
+    if 'Non-Tarp' in line:
+        updated_rgb_values.append((0,256,0))
+    else:
+        updated_rgb_values.append(rgb)
+
+
+image = Image.new('RGB', (width, height))
+image.putdata(updated_rgb_values)
+image.save('LOGoutput_image.png')
+```
+
+
+```{r load-packages}
+knitr::opts_chunk$set(cahce = TRUE, autodep = TRUE)
+library(tidyverse)
+library(tidymodels)
+library(ggcorrplot)
+library(GGally)
+library(patchwork)
+set.seed(6116)
+```
+
+```{r load-data}
+train <- read_csv('data/HaitiPixels.csv') %>% 
+  mutate(Class = factor(ifelse(Class == 'Blue Tarp', 'blue_tarp', 'non_blue')))
+
+test <- read.table('holdout.txt')
+```
+
+```{r set-up-for-training}
+resamples <- vfold_cv(train)
+
+formula <- Class ~ Red + Green + Blue
+
+knn_rec <- recipe(formula=formula, data=train) %>% 
+  step_pca(all_numeric_predictors(), num_comp=parsnip::tune()) # saw a warning tune() may be masked
+                                                               # so calling as parsnip::tune() to be sure
+
+knn_model <- nearest_neighbor(neighbors=parsnip::tune()) %>%
+  set_mode("classification") %>%
+  set_engine("kknn")
+
+knn_wf <- workflow() %>% 
+  add_recipe(knn_rec) %>% 
+  add_model(knn_model)
+
+parameters <- extract_parameter_set_dials(knn_wf) %>% 
+  update(
+    num_comp=num_comp(c(1,4)),
+    neighbors = neighbors(c(2, 50))
+  )
+```
+
+```{r tune-knn, cache = TRUE}
+knn_tune <- knn_wf %>% 
+  tune_grid(
+    resamples=resamples,
+    grid=grid_space_filling(parameters, size = 10),
+    control=control_resamples(save_pred = TRUE)
+    )
+```
+```{r}
+#| out.width: 75%
+#| fig.width: 10
+#| fig.height: 6
+#| dev: "png"
+autoplot(knn_tune, metric='roc_auc') +
+  geom_line()
+```
+
+
+```{r knn-show-best}
+show_best(knn_tune, metric = 'roc_auc')
+```
+The best parameter combination, both visually, and as per `show_best` is neighbors=34, `num_comp`=2. To prevent overfitting we can choose a simpler model, (less number of neighbors).  We can use `select_by_one_std_err` and see if there's a model withing one standard error that has a lower nuber of neighbors.
+```{r visualize-bests}
+knn_best <- knn_tune %>%
+  select_by_one_std_err(neighbors, metric = 'roc_auc') %>% 
+  dplyr::select(c(neighbors, num_comp))
+knn_best
+```
+So it looks like 18 neighbors is within one str err and will perform similarly without so much danger of overfitting.
+
+
+```{r}
+knn_fit <- knn_wf %>% 
+  finalize_workflow(knn_best) %>% 
+  fit_resamples(
+    resamples,
+    control=control_resamples(save_pred = TRUE)
+    )
+```
+
+
+
+```{r knn-roc-auc}
+#| fig.width: 9
+#| fig.height: 5
+#| fig.align: center
+#| out.width: 70%
+
+#| dev: "png"
+#| dpi: 100
+# plot ROC AUC
+knn_preds <-  collect_predictions(knn_fit)
+knn_preds %>% 
+  group_by(id) %>% 
+  roc_curve(truth = Class, '.pred_blue_tarp', event_level = 'first') %>% 
+  autoplot() +
+  theme(legend.position = 'none')
+  
+```
+
+
+
+```{r knn-cm}
+conf_mat(knn_preds, truth = Class, estimate = .pred_class)
+```
+
+```{r knn-threshold}
+knn_thresh_perf <- knn_preds %>%
+  probably::threshold_perf(
+    Class,
+    .pred_blue_tarp,
+    thresholds = seq(0.01, 0.99, 0.01),
+    event_level = 'second',
+    metrics = metric_set(
+      j_index,
+      yardstick::specificity,
+      yardstick::sensitivity,
+      accuracy
+      )
+    )
+```
+
+
+
+```{r knn-metric-plot}
+max_sens <- knn_thresh_perf %>% 
+  filter(.metric == 'sensitivity') %>% 
+  filter(.estimate == max(.estimate))
+
+max_j <- knn_thresh_perf %>% 
+  filter(.metric == 'j_index') %>% 
+  filter(.estimate == max(.estimate))
+  
+```
+
+
+
+
+```{r knn-thresholds}
+#| fig.width: 9
+#| fig.height: 5
+#| fig.align: center
+#| out.width: 70%
+#| fig.cap: ROC AUC based on nearest neighbors.
+#| dev: "png"
+#| dpi: 100
+ggplot(knn_thresh_perf, aes(x = .threshold, y = .estimate, color = .metric)) +
+  geom_line() +
+  geom_vline(data = max_sens, aes(xintercept = .threshold, color = .metric)) +
+  geom_vline(data = max_j, aes(xintercept = .threshold, color = .metric)) +
+  scale_x_continuous(breaks = seq(0, 1, 0.1)) +
+  labs(x = 'Threshold', y = '.metric')
+
+```
+
+
+
+
+
+```{r knn-conf-mtx}
+knn_preds_threshold <- knn_preds %>% 
+  mutate(.pred_class = factor(ifelse(.pred_blue_tarp>= 0.1, 'blue_tarp', 'non_blue')))
+
+conf_mat(knn_preds_threshold, truth = Class, estimate = .pred_class)
+```
+
+Generating the confusion matrix with different thresholds it seems a value of 0.1 allows for only 30 of 2022 `blue_tarp` misclassifications.  That's about 1.5%.  A value of 0.2 threshold rises to about 2%.  In the present use case, it is more important to identify blue tarps than it is to miss them, so I will use 0.1 as the threshold
+
+```{r knn-final}
+# fit the final model with the entire training dataset
+knn_final <- knn_wf %>% 
+  finalize_workflow(knn_best) %>% 
+  fit(train)
+```
+
+
+```{r knn-test-metrics}
+get_metrics <- metric_set(
+  j_index,
+  yardstick::sensitivity,
+  yardstick::specificity,
+  accuracy)
+
+# get metrics on training data
+knn_train_metrics <- knn_preds_threshold %>% 
+  get_metrics(truth = Class, estimate = .pred_class)
+
+# get metrics on test data
+knn_test_metrics <- parsnip::augment(knn_final, new_data = train) %>%
+  get_metrics(truth = Class, estimate = .pred_class)
+
+```
+
+
+
+
+```{r knn-compare-metrics}
+bind_rows(knn_train_metrics %>% mutate(data ='train'),
+          knn_test_metrics %>%  mutate(data = 'test')) %>% 
+  pivot_wider(id_cols =.metric,
+              names_from = data,
+              values_from = .estimate)
+```
+
+
+
+```{r}
+knn_preds_threshold
+```
+
+```{r recall, message=FALSE}
+library(caret)
+
+cm <- confusionMatrix(data=knn_preds_threshold$.pred_class, reference=knn_preds_threshold$Class, positive="blue_tarp")
+cm$byClass["F1"]
+```
+
+
+
+```{r set-up-for-training}
+resamples <- vfold_cv(train)
+
+formula <- Class ~ Red + Green + Blue
+
+knn_rec <- recipe(formula=formula, data=train) %>% 
+  step_pca(all_numeric_predictors(), num_comp=parsnip::tune()) # saw a warning tune() may be masked
+                                                               # so calling as parsnip::tune() to be sure
+
+knn_model <- nearest_neighbor(neighbors=parsnip::tune()) %>%
+  set_mode("classification") %>%
+  set_engine("kknn")
+
+knn_wf <- workflow() %>% 
+  add_recipe(knn_rec) %>% 
+  add_model(knn_model)
+
+parameters <- extract_parameter_set_dials(knn_wf) %>% 
+  update(
+    num_comp=num_comp(c(1,4)),
+    neighbors = neighbors(c(2, 50))
+  )
+```
+
+```{r tune-knn, cache = TRUE}
+knn_tune <- knn_wf %>% 
+  tune_grid(
+    resamples=resamples,
+    grid=grid_space_filling(parameters, size = 10),
+    control=control_resamples(save_pred = TRUE)
+    )
+```
+
+```{r visualize-bests}
+knn_best <- knn_tune %>%
+  select_by_one_std_err(neighbors, metric = 'roc_auc') %>% 
+  dplyr::select(c(neighbors, num_comp))
+knn_best
+```
+
+```{r}
+knn_fit <- knn_wf %>% 
+  finalize_workflow(knn_best) %>% 
+  fit_resamples(
+    resamples,
+    control=control_resamples(save_pred = TRUE)
+    )
+```
+
+```{r knn-roc-auc}
+#| fig.width: 9
+#| fig.height: 5
+#| fig.align: center
+#| out.width: 70%
+
+#| dev: "png"
+#| dpi: 100
+# plot ROC AUC
+knn_preds <-  collect_predictions(knn_fit)
+knn_preds %>% 
+  group_by(id) %>% 
+  roc_curve(truth = Class, '.pred_blue_tarp', event_level = 'first') %>% 
+  autoplot() +
+  theme(legend.position = 'none')
+  
+```
+
+```{r knn-conf-mtx}
+knn_preds_threshold <- knn_preds %>% 
+  mutate(.pred_class = factor(ifelse(.pred_blue_tarp >= 0.1, 'blue_tarp', 'non_blue')))
+```
+
+```{r knn-final}
+# fit the final model with the entire training dataset
+knn_final <- knn_wf %>% 
+  finalize_workflow(knn_best) %>% 
+  fit(train)
+```
+
+```{r}
+test_preds_fmeas2 <- holdout %>%
+  bind_cols(
+    predict(knn_final, new_data = holdout, type = "class")) %>%
+  mutate(Class = factor(Class))
+```
+
+```{r}
+test_preds_fmeas2$color <- rgb(test_preds_fmeas2$Red, test_preds_fmeas2$Green, test_preds_fmeas2$Blue, maxColorValue = 255)
+
+predictedcolorplot <- test_preds_fmeas2 %>%
+  filter(.pred_class == "blue_tarp")
+
+g3 <- ggplot(predictedcolorplot, aes(x = Red, y = Green)) +
+  geom_point(aes(color = color), size = 2, alpha = 0.25) +
+  scale_color_identity() +
+  theme_minimal()+
+  labs(title = "KNN\nTest Set Predicted Blue Tarp Colors")
+g3
+```
+
+```{r}
+incorrectcolorplot <- test_preds_fmeas2 %>%
+  filter(.pred_class == "blue_tarp" & Class == "Non_Tarp")
+
+g4 <- ggplot(incorrectcolorplot, aes(x = Red, y = Green)) +
+  geom_point(aes(color = color), size = 2, alpha = 0.25) +
+  scale_color_identity() +
+  theme_minimal()+
+  labs(title = "KNN\nTest Set Incorrectly Predicted Blue Tarp Colors")
+g4
+```
+
+
+
+
+
+# BOOSTING
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+knitr::opts_chunk$set(cache=FALSE, autodep=TRUE)
+knitr::opts_chunk$set(fig.align="center", fig.pos="tbh")
+set.seed(123)
+library(future)
+plan(multisession, workers = parallel::detectCores(logical = FALSE))
+```
+
+
+
+```{r}
+#| warning: FALSE
+#| message: FALSE
+library(tidyverse)
+library(tidymodels)
+library(tidyverse)
+library(GGally)
+library(patchwork)
+library(ggcorrplot)
+library(dplyr)
+library(lightgbm)
+library(bonsai)
+```
+
+
+# Read in Training Dataset
+```{r Read in Training Data}
+#haiti <- read.csv('~/Documents/MSDS/DS6030/Disaster Relief Project/Data/HaitiPixels.csv')
+setwd('~/Desktop/DS6030/')
+haiti_train<- read.csv("HaitiPixels (1).csv")
+haiti_train$Class <- ifelse(haiti_train$Class == "Blue Tarp", "Blue Tarp", "Not Blue Tarp")
+haiti_resamples <- vfold_cv(haiti_train, strata=Class)
+haiti_cv_control <- control_resamples(save_pred=TRUE)
+haiti_cv_metrics <- metric_set(accuracy, roc_auc, recall, f_meas)
+```
+
+
+```{r holdout-load, message=FALSE}
+process_load_holdout_file <- function(filename) {
+    fileLines <- readLines(filename, skip=7)
+    fileLines[8] <- gsub(";", "", fileLines[8])
+    fileLines[8] <- gsub("Map X", "Map_X", fileLines[8])
+    fileLines[8] <- gsub("Map Y", "Map_Y", fileLines[8])
+    writeLines(fileLines, sprintf("temp_%s", filename))
+    read_table(sprintf("temp_%s", filename), skip=7)
+}
+
+rename_set_target <- function(df, class_target) {
+    colnames(df)[colnames(df) == 'B1'] <- 'Red'
+    colnames(df)[colnames(df) == 'B2'] <- 'Green'
+    colnames(df)[colnames(df) == 'B3'] <- 'Blue'
+    df %>%mutate(target = class_target)
+}
+```
+
+```{r holdout-2, message=FALSE}
+setwd("~/Desktop/DS6030/HoldOutData")
+# collect holdout blue tarp data
+holdout_blue_tarp <- bind_rows(
+    process_load_holdout_file('orthovnir067_ROI_Blue_Tarps.txt'),
+    process_load_holdout_file('orthovnir069_ROI_Blue_Tarps.txt'),
+    process_load_holdout_file('orthovnir078_ROI_Blue_Tarps.txt')
+)
+
+test_blue_tarp <- holdout_blue_tarp %>%
+    rename_set_target('blue_tarp') %>%
+    dplyr::select(c(Red, Green, Blue, target))
+
+head(test_blue_tarp)
+nrow(test_blue_tarp)
+```
+```{r holdout-3, message=FALSE}
+# collect holdout non_blue tarp data
+setwd("~/Desktop/DS6030/HoldOutData")
+holdout_non_blue_tarp <- bind_rows(
+  process_load_holdout_file('orthovnir057_ROI_NON_Blue_Tarps.txt'),
+  process_load_holdout_file('orthovnir067_ROI_Blue_Tarps_data.txt'),
+  process_load_holdout_file('orthovnir069_ROI_NOT_Blue_Tarps.txt'),
+  process_load_holdout_file('orthovnir078_ROI_NON_Blue_Tarps.txt')
+)
+
+test_non_blue_tarp <- holdout_non_blue_tarp %>%
+    rename_set_target('non_blue') %>%
+    dplyr::select(c(Red, Green, Blue, target))
+
+#head(holdout_non_blue_tarp)
+nrow(test_non_blue_tarp)
+```
+
+```{r holdout-4, message=FALSE}
+# combine both for final set
+holdout <- bind_rows(
+  test_blue_tarp,
+  test_non_blue_tarp
+)
+head(holdout)
+```
+
+```{r}
+write.table(x = holdout, file = "holdout.txt", sep = "\t", row.names = FALSE, quote=FALSE)
+write.csv(holdout, 'holdout.csv', row.names=FALSE, quote=FALSE)
+test <- read_table('holdout.txt')
+nrow(test)
+head(test)
+```
+
+```{r}
+haiti_test <- test %>%
+  rename(Class = target)
+```
+```{r}
+haiti_test <- haiti_test %>%
+  mutate(
+    Class = ifelse(Class == "blue_tarp", "Blue Tarp", "Not Blue Tarp"),
+    Class = factor(Class, levels = c("Not Blue Tarp", "Blue Tarp"))
+  )
+
+```
+
+```{r}
+head(haiti_test)
+```
+
+```{r}
+haiti_formula <- (Class ~ Red + Green + Blue)
+haiti_boost_wf <- workflow() %>%
+add_recipe(recipe(haiti_formula, data=haiti_train)) %>%
+add_model(boost_tree(mode="classification", engine="lightgbm",
+trees=250, tree_depth=tune(), learn_rate=tune(), min_n = tune()))
+```
+
+```{r}
+haiti_parameters <- extract_parameter_set_dials(haiti_boost_wf)
+haiti_tune_boost <- tune_bayes(haiti_boost_wf,
+resamples=haiti_resamples,
+metrics=haiti_cv_metrics,
+param_info=haiti_parameters, iter=25)
+```
+```{r}
+autoplot(haiti_tune_boost)
+```
+
+
+
+```{r}
+roc_cv_plot <- function(model_cv, model_name) {
+  cv_predictions <- collect_predictions(model_cv)
+  cv_roc <- cv_predictions %>%
+    mutate(Class = factor(Class, levels = c("Not Blue Tarp", "Blue Tarp")))%>%
+    roc_curve(truth = Class, `.pred_Blue Tarp`, event_level = "second")
+return(autoplot(cv_roc) + labs(title=model_name))
+}
+```
+
+```{r}
+select_best(haiti_tune_boost, metric="roc_auc")
+```
+
+```{r}
+best_haiti_boost_wf <- haiti_boost_wf %>%
+finalize_workflow(select_best(haiti_tune_boost, metric="roc_auc"))
+haiti_boost_cv <- fit_resamples(best_haiti_boost_wf, haiti_resamples, metrics=haiti_cv_metrics, control=haiti_cv_control)
+g_roc_boost <- roc_cv_plot(haiti_boost_cv, "Boosting")
+```
+```{r}
+g_roc_boost
+```
+
+
+```{r}
+cv_metrics_summary <- collect_metrics(haiti_boost_cv)
+cv_metrics_summary
+```
+
+
+
+```{r}
+final_haiti_boost_model <- fit(best_haiti_boost_wf, data = haiti_train)
+```
+```{r}
+test_preds <- augment(final_haiti_boost_model, new_data = haiti_test) %>%
+  mutate(
+    .pred_class = factor(.pred_class, levels = c("Not Blue Tarp", "Blue Tarp"))
+  )
+
+```
+
+
+
+```{r}
+test_acc <- accuracy(test_preds, truth = Class, estimate = .pred_class)
+test_recall <- recall(test_preds, truth = Class, estimate = .pred_class, event_level = "second")
+test_fmeas <- f_meas(test_preds, truth = Class, estimate = .pred_class, event_level = "second")
+```
+
+```{r}
+test_roc<- roc_auc(test_preds, truth = Class, `.pred_Blue Tarp`, event_level = "second")
+```
+```{r}
+test_metrics_summary <- bind_rows(test_acc, test_roc, test_fmeas, test_recall)
+```
+
+```{r}
+cv_metrics_summary %>%
+  select(.metric, mean) %>%
+  rename(train = mean) %>%
+  inner_join(
+    test_metrics_summary %>%
+      select(.metric, .estimate) %>%
+      rename(test = .estimate),
+    by = ".metric"
+  )
+```
+
+# RANDOM FOREST
+
+# Load and Prep Data
+```{r setup-parallel}
+#| cache: FALSE
+#| message: false
+library(future)
+plan(multisession, workers = future::availableCores())
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+### Read in Training Data (HaitiPixels.csv)
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+```
+
+```{r}
+haititrain <- read.csv("https://gedeck.github.io/DS-6030/project/HaitiPixels.csv")
+```
+
+### Read in Holdout Data
+```{r message=FALSE, warning=FALSE}
+setwd("~/Documents/MSDS/DS6030/Disaster Relief Project/Data/HoldOutData")
+
+files = sort(
+c("orthovnir078_ROI_NON_Blue_Tarps.txt", "orthovnir078_ROI_Blue_Tarps.txt",
+"orthovnir069_ROI_NOT_Blue_Tarps.txt", "orthovnir069_ROI_Blue_Tarps.txt",
+"orthovnir067_ROI_NOT_Blue_Tarps.txt","orthovnir067_ROI_Blue_Tarps.txt",
+"orthovnir057_ROI_NON_Blue_Tarps.txt"))
+
+files2 = "orthovnir067_ROI_Blue_Tarps_data.txt"
+
+col_names <- c("ID", "X", "Y", "Map_X", "Map_Y", "Lat", "Lon", "B1", "B2", "B3")
+
+txt_data <- lapply(files, read.table, header = TRUE, fill = TRUE, skip = 7, col.names = col_names)
+
+short_txt <- read.table(files2, header = TRUE, fill = TRUE, col.names = c("B1","B2","B3"))
+
+short_data <- tibble(
+ID = NA, X = NA, Y = NA, Map_X = NA, Map_Y = NA,
+Lat = NA, Lon = NA, B1 = short_txt$B1, B2 = short_txt$B2, B3 = short_txt$B3)
+
+names(txt_data) <- files
+
+all_data <- c(txt_data, `orthovnir067_ROI_Blue_Tarps_data.txt` = list(short_data))
+
+holdout <- bind_rows(all_data, .id = "source")
+```
+
+### Relabel Training & Holdout
+```{r}
+holdout <- holdout %>%
+  rename(
+    Red = B1,
+    Green = B2,
+    Blue = B3
+  )
+```
+
+```{r}
+haititrain <- haititrain %>%
+  mutate(
+    Class = if_else(Class == "Blue Tarp", "Blue_Tarp", "Non_Tarp"),
+    Class = factor(Class)
+  )
+
+holdout <- holdout %>%
+  mutate(Class = case_when(
+    str_detect(source, "NOT|NON") ~ "Non_Tarp",
+    TRUE ~ "Blue_Tarp"
+  ))
+```
+
+### Split Data
+```{r}
+set.seed(123)
+data_split <- initial_split(haititrain, strata = Class)
+train_data <- training(data_split)
+test_data  <- testing(data_split)
+```
+
+# Set up Recipes/Resamples/CV_Control/CV_metrics/Engine
+```{r}
+pixel_recipe <- recipe(Class ~ Red + Green + Blue, data = train_data) %>%
+  step_normalize(all_predictors())
+resamples <- vfold_cv(train_data, strata=Class)
+cv_control <- control_resamples(save_pred=TRUE)
+cv_metrics <- metric_set(roc_auc, accuracy, f_meas, recall)
+```
+
+```{r}
+library(ranger)
+
+rf <- rand_forest(mode = "classification", trees=tune(), min_n=tune(), mtry=tune()) %>%
+  set_engine("ranger", importance = "impurity", probability = TRUE)
+```
+
+
+
+# 1st RF Model
+### Set up Workflow
+```{r}
+library(bonsai)
+
+rf_wf <- workflow() %>%
+    add_recipe(pixel_recipe) %>%
+    add_model(rf)
+
+parameters <- extract_parameter_set_dials(rf_wf)
+parameters
+```
+
+# Set Parameters / Tune
+Tuning this model pretty wide.
+```{r tune-1}
+parameters <- extract_parameter_set_dials(rf_wf) %>%
+    update(mtry = mtry(c(1, 3)))
+tune_random <- tune_bayes(rf_wf,
+    resamples=resamples,
+    metrics=cv_metrics,
+    param_info=parameters, iter=25)
+autoplot(tune_random)
+```
+
+## Best Model (f_meas)
+```{r}
+final_params_fmeas <- select_best(tune_random, metric = "f_meas") 
+
+final_params_fmeas %>%
+  select(mtry, trees, min_n) %>%
+  knitr::kable(caption = "Final Tuned Parameters for Random Forest Model") %>%
+  kableExtra::kable_styling(full_width = FALSE)
+```
+
+```{r}
+show_best(tune_random, metric = "f_meas")
+```
+
+### Finalize Workflow (f_meas)
+Finalize the workflow on best f_meas.
+```{r bestfmeastraining}
+#| warning: FALSE
+best_rf_wf_fmeas <- rf_wf %>%
+    finalize_workflow(select_best(tune_random, metric="f_meas"))
+random_cv_fmeas <- fit_resamples(best_rf_wf_fmeas, resamples, metrics=cv_metrics, control=cv_control)
+```
+
+Fit the best f_meas on training data
+```{r bestfmeasfit}
+final_model_fmeas <- fit(best_rf_wf_fmeas, data = train_data)
+```
+
+Predict on the Holdout Set
+```{r bestfmeastest}
+test_preds_fmeas <- predict(final_model_fmeas, new_data = holdout, type = "prob") %>%
+  bind_cols(predict(final_model_fmeas, new_data = holdout, type = "class")) %>%
+  bind_cols(holdout %>% select(Class)) %>%
+  mutate(Class = factor(Class))
+```
+
+Confusion Matrix for f_meas model
+```{r}
+conf_mat(test_preds_fmeas, truth = Class, estimate = .pred_class) %>%
+  autoplot(type = 'heatmap')
+```
+
+F_meas metrics table
+```{r}
+train_metrics_fmeas <- collect_metrics(random_cv_fmeas) %>%
+  mutate(model = "Train") %>%
+  select(.metric, model, .estimate = mean)
+
+test_metrics_fmeas <- bind_rows(
+  accuracy(test_preds_fmeas, truth = Class, estimate = .pred_class),
+  f_meas(test_preds_fmeas, truth = Class, estimate = .pred_class),
+  recall(test_preds_fmeas, truth = Class, estimate = .pred_class),
+  roc_auc(test_preds_fmeas, truth = Class, `.pred_Blue_Tarp`)) %>%
+  mutate(model = "Test") %>%
+  select(.metric, model, .estimate)
+
+combined_metrics_fmeas <- bind_rows(train_metrics_fmeas, test_metrics_fmeas) %>%
+  pivot_wider(names_from = model, values_from = .estimate) %>%
+  rename(Metric = .metric,
+    `Train Estimate` = Train,
+    `Test Estimate` = Test)
+
+knitr::kable(combined_metrics_fmeas, digits = 4, caption = "Random Forest on Training and Test Sets") %>%
+  kableExtra::kable_styling(full_width = FALSE)
+```
+
+
+# 2nd RF Model
+### Set Parameters / Tune
+```{r}
+parameters <- extract_parameter_set_dials(rf_wf) %>%
+    update(mtry = mtry(c(1, 3)),
+           trees = trees(c(0, 700)),
+           min_n = min_n(c(10, 40)))
+second_tune <- tune_bayes(rf_wf,
+    resamples=resamples,
+    metrics=cv_metrics,
+    param_info=parameters, iter=25)
+autoplot(second_tune)
+```
+
+## Best Model (f_meas)
+```{r}
+final_params_fmeas2 <- select_best(second_tune, metric = "f_meas") 
+
+final_params_fmeas2 %>%
+  select(mtry, trees, min_n) %>%
+  knitr::kable(caption = "Final Tuned Parameters for Random Forest Model") %>%
+  kableExtra::kable_styling(full_width = FALSE)
+```
+
+```{r}
+show_best(second_tune, metric = "f_meas")
+```
+
+### Finalize Workflow (f_meas)
+Finalize the workflow on best f_meas.
+```{r}
+#| warning: FALSE
+best_rf_wf_fmeas2 <- rf_wf %>%
+    finalize_workflow(select_best(second_tune, metric="f_meas"))
+random_cv_fmeas2 <- fit_resamples(best_rf_wf_fmeas2, resamples, metrics=cv_metrics, control=cv_control)
+```
+
+Fit the best f_meas on training data
+```{r}
+final_model_fmeas2 <- fit(best_rf_wf_fmeas2, data = train_data)
+```
+
+Predict on the Holdout Set
+```{r}
+test_preds_fmeas2 <- holdout %>%
+  bind_cols(
+    predict(final_model_fmeas2, new_data = holdout, type = "prob"),
+    predict(final_model_fmeas2, new_data = holdout, type = "class")) %>%
+  mutate(Class = factor(Class))
+```
+
+Confusion Matrix for f_meas model
+```{r}
+conf_mat(test_preds_fmeas2, truth = Class, estimate = .pred_class) %>%
+  autoplot(type = 'heatmap')
+```
+
+F_meas metrics table
+```{r}
+train_metrics_fmeas2 <- collect_metrics(random_cv_fmeas2) %>%
+  mutate(model = "Train") %>%
+  select(.metric, model, .estimate = mean)
+
+test_metrics_fmeas2 <- bind_rows(
+  accuracy(test_preds_fmeas2, truth = Class, estimate = .pred_class),
+  f_meas(test_preds_fmeas2, truth = Class, estimate = .pred_class),
+  recall(test_preds_fmeas2, truth = Class, estimate = .pred_class),
+  roc_auc(test_preds_fmeas2, truth = Class, `.pred_Blue_Tarp`)) %>%
+  mutate(model = "Test") %>%
+  select(.metric, model, .estimate)
+
+combined_metrics_fmeas2 <- bind_rows(train_metrics_fmeas2, test_metrics_fmeas2) %>%
+  pivot_wider(names_from = model, values_from = .estimate) %>%
+  rename(Metric = .metric,
+    `Train Estimate` = Train,
+    `Test Estimate` = Test)
+
+knitr::kable(combined_metrics_fmeas2, digits = 4, caption = "Random Forest on Training and Test Sets") %>%
+  kableExtra::kable_styling(full_width = FALSE)
+```
+
+
+```{r}
+holdout$color <- rgb(holdout$Red, holdout$Green, holdout$Blue, maxColorValue = 255)
+
+fullcolorplot <- holdout %>% 
+  filter(Class == "Blue_Tarp")
+
+g1 <- ggplot(holdout, aes(x = Red, y = Green)) +
+  geom_point(aes(color = color), size = 2, alpha = 0.25) +
+  scale_color_identity() +
+  theme_minimal()+
+  labs(title = "Test Set Colors")
+```
+
+```{r}
+g2 <- ggplot(fullcolorplot, aes(x = Red, y = Green)) +
+  geom_point(aes(color = color), size = 2, alpha = 0.25) +
+  scale_color_identity() +
+  theme_minimal()+
+  labs(title = "Test Set Blue Tarp Colors")
+```
+
+```{r fig.height=8, fig.width=15}
+library(patchwork)
+(g1 + g2)
+```
+
+```{r}
+test_preds_fmeas2$color <- rgb(test_preds_fmeas2$Red, test_preds_fmeas2$Green, test_preds_fmeas2$Blue, maxColorValue = 255)
+
+predictedcolorplot <- test_preds_fmeas2 %>%
+  filter(.pred_class == "Blue_Tarp")
+
+g3 <- ggplot(predictedcolorplot, aes(x = Red, y = Green)) +
+  geom_point(aes(color = color), size = 2, alpha = 0.25) +
+  scale_color_identity() +
+  theme_minimal()+
+  labs(title = "Random Forest\nTest Set Predicted Blue Tarp Colors")
+g3
+```
+
+```{r}
+incorrectcolorplot <- test_preds_fmeas2 %>%
+  filter(.pred_class == "Blue_Tarp" & Class == "Non_Tarp")
+
+g4 <- ggplot(incorrectcolorplot, aes(x = Red, y = Green)) +
+  geom_point(aes(color = color), size = 2, alpha = 0.25) +
+  scale_color_identity() +
+  theme_minimal()+
+  labs(title = "Random Forest\nTest Set Incorrectly Predicted Blue Tarp Colors")
+g4
+```
+```{r}
+setwd("~/Documents/MSDS/DS6030/Disaster Relief Project/Data/HoldOutData")
+new_datapoints <- read_table('image_rgb.txt')
+colnames(new_datapoints) <- c("Red", "Green", "Blue")
+thepreds <- predict(final_model_fmeas2, new_data=new_datapoints)
+write.csv(thepreds, "RFthepreds.csv", row.names = FALSE)
+```
+
