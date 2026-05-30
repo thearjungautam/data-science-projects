@@ -1,0 +1,501 @@
+[
+  {
+    "patient_id": "LAB_001",
+    "timestamp": "2026-03-30T22:44:50.946582Z",
+    "severity": "Routine",
+    "draft_message": "I reviewed your recent lab results. A few results are slightly outside the usual range, and I would like to go over them with you.",
+    "safety": {
+      "safe": false,
+      "issues": [
+        "Diagnostic language: 'slightly above the usual range' might imply a diagnosis of high cholesterol.",
+        "Medication advice or treatment changes: Vitamin D replacement is suggested without a clear indication or prescription from the clinician.",
+        "Dosage instructions: No dosage information for Vitamin D replacement is provided.",
+        "Overconfident claims: The message states 'would be worth discussing further' which might imply that the patient has high cholesterol.",
+        "Hallucinated facts not supported by the input: Repeat testing at follow-up is suggested without clear justification or recommendation from the clinician.",
+        "Definitive clinical conclusions: The message implies a diagnosis and treatment plan without a review with the clinician.",
+        "Statements that go beyond the provided labs and context: The message suggests Vitamin D replacement based on low levels, which might not be a routine recommendation."
+      ]
+    },
+    "audit": {
+      "patient_id": "LAB_001",
+      "abnormal_labs": [
+        {
+          "lab": "LDL",
+          "value": 118,
+          "units": "mg/dL",
+          "flagged": true,
+          "interpretation": "borderline high"
+        },
+        {
+          "lab": "Vitamin_D",
+          "value": 16,
+          "units": "ng/mL",
+          "flagged": true,
+          "interpretation": "deficient"
+        }
+      ],
+      "severity": "Routine",
+      "severity_score": 1.5,
+      "severity_rationale": [
+        "LDL contributed 0.5 point(s)",
+        "Vitamin_D contributed 1 point(s)"
+      ],
+      "followup_questions": [
+        "Would you like to discuss vitamin D replacement or repeat testing at follow-up?"
+      ]
+    }
+  },
+  {
+    "patient_id": "LAB_002",
+    "timestamp": "2026-03-30T22:44:56.189859Z",
+    "severity": "Follow-up recommended",
+    "draft_message": "I reviewed your recent lab results and a few findings would be worth discussing. I would like to review these results with you and discuss whether follow-up testing may be needed. Please schedule a follow-up appointment when convenient.",
+    "safety": {
+      "safe": false,
+      "issues": [
+        "No JSON returned"
+      ]
+    },
+    "audit": {
+      "patient_id": "LAB_002",
+      "abnormal_labs": [
+        {
+          "lab": "ALT",
+          "value": 46,
+          "units": "U/L",
+          "flagged": true,
+          "interpretation": "mildly elevated"
+        },
+        {
+          "lab": "A1c",
+          "value": 6.0,
+          "units": "%",
+          "flagged": true,
+          "interpretation": "prediabetes range"
+        },
+        {
+          "lab": "Triglycerides",
+          "value": 286,
+          "units": "mg/dL",
+          "flagged": true,
+          "interpretation": "high"
+        },
+        {
+          "lab": "LDL",
+          "value": 154,
+          "units": "mg/dL",
+          "flagged": true,
+          "interpretation": "high"
+        },
+        {
+          "lab": "HDL",
+          "value": 38,
+          "units": "mg/dL",
+          "flagged": true,
+          "interpretation": "low"
+        },
+        {
+          "lab": "Vitamin_D",
+          "value": 24,
+          "units": "ng/mL",
+          "flagged": true,
+          "interpretation": "insufficient"
+        }
+      ],
+      "severity": "Follow-up recommended",
+      "severity_score": 6.5,
+      "severity_rationale": [
+        "LDL contributed 1 point(s)",
+        "HDL contributed 1 point(s)",
+        "Triglycerides contributed 2 point(s)",
+        "A1c contributed 1 point(s)",
+        "ALT contributed 1 point(s)",
+        "Vitamin_D contributed 0.5 point(s)"
+      ],
+      "followup_questions": [
+        "Triglycerides are elevated on a non-fasting sample; should fasting labs be repeated?"
+      ]
+    }
+  },
+  {
+    "patient_id": "LAB_003",
+    "timestamp": "2026-03-30T22:45:03.260562Z",
+    "severity": "Follow-up recommended",
+    "draft_message": "I reviewed your recent lab results and a few findings would be worth discussing. I would like to review these results with you and discuss whether follow-up testing may be needed. Please schedule a follow-up appointment when convenient.",
+    "safety": {
+      "safe": false,
+      "issues": [
+        "No JSON returned"
+      ]
+    },
+    "audit": {
+      "patient_id": "LAB_003",
+      "abnormal_labs": [
+        {
+          "lab": "eGFR",
+          "value": 52,
+          "units": "mL/min/1.73m\u00b2",
+          "flagged": true,
+          "interpretation": "moderately decreased"
+        },
+        {
+          "lab": "Creatinine",
+          "value": 1.5,
+          "units": "mg/dL",
+          "flagged": true,
+          "interpretation": "high"
+        },
+        {
+          "lab": "A1c",
+          "value": 8.1,
+          "units": "%",
+          "flagged": true,
+          "interpretation": "diabetes range"
+        },
+        {
+          "lab": "Triglycerides",
+          "value": 248,
+          "units": "mg/dL",
+          "flagged": true,
+          "interpretation": "high"
+        },
+        {
+          "lab": "HDL",
+          "value": 36,
+          "units": "mg/dL",
+          "flagged": true,
+          "interpretation": "low"
+        },
+        {
+          "lab": "Vitamin_D",
+          "value": 27,
+          "units": "ng/mL",
+          "flagged": true,
+          "interpretation": "insufficient"
+        }
+      ],
+      "severity": "Follow-up recommended",
+      "severity_score": 9.5,
+      "severity_rationale": [
+        "HDL contributed 1 point(s)",
+        "Triglycerides contributed 2 point(s)",
+        "A1c contributed 3 point(s)",
+        "Creatinine contributed 1 point(s)",
+        "eGFR contributed 2 point(s)",
+        "Vitamin_D contributed 0.5 point(s)"
+      ],
+      "followup_questions": [
+        "Does the patient have home glucose readings, recent dietary changes, or missed diabetes medication doses?",
+        "Should kidney function be repeated, and are there recent hydration changes, NSAID use, or other possible contributors?"
+      ]
+    }
+  },
+  {
+    "patient_id": "LAB_004",
+    "timestamp": "2026-03-30T22:45:07.430340Z",
+    "severity": "Urgent follow-up",
+    "draft_message": "I reviewed your recent lab results and a few results need to be discussed promptly. I would like to review these results with you soon and talk about if additional evaluation is needed. Please contact our office as soon as possible.",
+    "safety": {
+      "safe": false,
+      "issues": [
+        "Diagnostic language: 'notably elevated' and 'may need follow-up'",
+        "Medication advice or treatment changes: 'repeat this test'"
+      ]
+    },
+    "audit": {
+      "patient_id": "LAB_004",
+      "abnormal_labs": [
+        {
+          "lab": "ALT",
+          "value": 184,
+          "units": "U/L",
+          "flagged": true,
+          "interpretation": "markedly elevated"
+        },
+        {
+          "lab": "AST",
+          "value": 162,
+          "units": "U/L",
+          "flagged": true,
+          "interpretation": "markedly elevated"
+        },
+        {
+          "lab": "LDL",
+          "value": 102,
+          "units": "mg/dL",
+          "flagged": true,
+          "interpretation": "borderline high"
+        }
+      ],
+      "severity": "Urgent follow-up",
+      "severity_score": 8.5,
+      "severity_rationale": [
+        "LDL contributed 0.5 point(s)",
+        "ALT contributed 4 point(s)",
+        "AST contributed 4 point(s)",
+        "Urgent threshold triggered by at least one lab value"
+      ],
+      "followup_questions": [
+        "Has the patient had recent alcohol use, acetaminophen use, viral illness, supplements, or other possible liver stressors?",
+        "Given symptoms such as nausea or dark urine, should the patient be contacted sooner for clinical review?"
+      ]
+    }
+  },
+  {
+    "patient_id": "LAB_005",
+    "timestamp": "2026-03-30T22:45:14.701457Z",
+    "severity": "Follow-up recommended",
+    "draft_message": "Hello, I'd like to review your recent lab results with you. You have several abnormal values that require discussion. Would you be available to schedule a follow-up appointment? Please review the results with your clinician before scheduling.",
+    "safety": {
+      "safe": false,
+      "issues": [
+        "The message implies a diagnosis based on lab results: 'Your liver enzymes and cholesterol levels are elevated'.",
+        "The message makes medication changes suggestion: 'We may want to repeat some tests at follow-up to confirm these findings and discuss any potential concerns.'",
+        "The message tells the patient what condition they have: 'You have high cholesterol, low vitamin D, and mildly decreased eGFR'.",
+        "The message does not review labs with the clinician: 'We may want to repeat some tests at follow-up to confirm these findings'"
+      ]
+    },
+    "audit": {
+      "patient_id": "LAB_005",
+      "abnormal_labs": [
+        {
+          "lab": "ALT",
+          "value": 96,
+          "units": "U/L",
+          "flagged": true,
+          "interpretation": "moderately elevated"
+        },
+        {
+          "lab": "AST",
+          "value": 82,
+          "units": "U/L",
+          "flagged": true,
+          "interpretation": "moderately elevated"
+        },
+        {
+          "lab": "eGFR",
+          "value": 68,
+          "units": "mL/min/1.73m\u00b2",
+          "flagged": true,
+          "interpretation": "mildly decreased"
+        },
+        {
+          "lab": "A1c",
+          "value": 6.7,
+          "units": "%",
+          "flagged": true,
+          "interpretation": "diabetes range"
+        },
+        {
+          "lab": "Triglycerides",
+          "value": 342,
+          "units": "mg/dL",
+          "flagged": true,
+          "interpretation": "high"
+        },
+        {
+          "lab": "LDL",
+          "value": 172,
+          "units": "mg/dL",
+          "flagged": true,
+          "interpretation": "very high"
+        },
+        {
+          "lab": "HDL",
+          "value": 34,
+          "units": "mg/dL",
+          "flagged": true,
+          "interpretation": "low"
+        },
+        {
+          "lab": "Vitamin_D",
+          "value": 18,
+          "units": "ng/mL",
+          "flagged": true,
+          "interpretation": "deficient"
+        }
+      ],
+      "severity": "Follow-up recommended",
+      "severity_score": 15,
+      "severity_rationale": [
+        "LDL contributed 2 point(s)",
+        "HDL contributed 1 point(s)",
+        "Triglycerides contributed 2 point(s)",
+        "A1c contributed 2 point(s)",
+        "eGFR contributed 1 point(s)",
+        "ALT contributed 3 point(s)",
+        "AST contributed 3 point(s)",
+        "Vitamin_D contributed 1 point(s)"
+      ],
+      "followup_questions": [
+        "Has the patient had recent alcohol use, acetaminophen use, viral illness, supplements, or other possible liver stressors?",
+        "Does the patient have home glucose readings, recent dietary changes, or missed diabetes medication doses?",
+        "Would you like to discuss vitamin D replacement or repeat testing at follow-up?"
+      ]
+    }
+  },
+  {
+    "patient_id": "LAB_006",
+    "timestamp": "2026-03-30T22:45:22.396093Z",
+    "severity": "Routine",
+    "draft_message": "I reviewed your recent lab results. A few results are slightly outside the usual range, and I would like to go over them with you.",
+    "safety": {
+      "safe": false,
+      "issues": [
+        "Expecting ',' delimiter: line 10 column 24 (char 731)"
+      ]
+    },
+    "audit": {
+      "patient_id": "LAB_006",
+      "abnormal_labs": [
+        {
+          "lab": "eGFR",
+          "value": 66,
+          "units": "mL/min/1.73m\u00b2",
+          "flagged": true,
+          "interpretation": "mildly decreased"
+        },
+        {
+          "lab": "Creatinine",
+          "value": 1.4,
+          "units": "mg/dL",
+          "flagged": true,
+          "interpretation": "high"
+        },
+        {
+          "lab": "Vitamin_D",
+          "value": 29,
+          "units": "ng/mL",
+          "flagged": true,
+          "interpretation": "insufficient"
+        }
+      ],
+      "severity": "Routine",
+      "severity_score": 2.5,
+      "severity_rationale": [
+        "Creatinine contributed 1 point(s)",
+        "eGFR contributed 1 point(s)",
+        "Vitamin_D contributed 0.5 point(s)"
+      ],
+      "followup_questions": [
+        "Should kidney function be repeated, and are there recent hydration changes, NSAID use, or other possible contributors?"
+      ]
+    }
+  },
+  {
+    "patient_id": "LAB_007",
+    "timestamp": "2026-03-30T22:45:30.835525Z",
+    "severity": "Follow-up recommended",
+    "draft_message": "I reviewed your recent lab results and a few findings would be worth discussing. I would like to review these results with you and discuss whether follow-up testing may be needed. Please schedule a follow-up appointment when convenient.",
+    "safety": {
+      "safe": false,
+      "issues": [
+        "Diagnostic language: 'mildly decreased' eGFR value may be too specific for a lab result",
+        "Medication advice or treatment changes: No, but the patient has type 2 diabetes and takes metformin.",
+        "Dosage instructions: No",
+        "Overconfident claims: The message is cautious but does imply that the results require further evaluation without referencing clinical guidelines.",
+        "Hallucinated facts not supported by the input: There are no hallucinated facts in this message.",
+        "Definitive clinical conclusions: The message implies a definitive conclusion about the patient's condition based on lab results without consulting with the clinician.",
+        "Statements that go beyond the provided labs and context: The message mentions 'recent dietary changes' which may not be part of the patient's medical history."
+      ]
+    },
+    "audit": {
+      "patient_id": "LAB_007",
+      "abnormal_labs": [
+        {
+          "lab": "eGFR",
+          "value": 82,
+          "units": "mL/min/1.73m\u00b2",
+          "flagged": true,
+          "interpretation": "mildly decreased"
+        },
+        {
+          "lab": "A1c",
+          "value": 7.2,
+          "units": "%",
+          "flagged": true,
+          "interpretation": "diabetes range"
+        },
+        {
+          "lab": "Triglycerides",
+          "value": 198,
+          "units": "mg/dL",
+          "flagged": true,
+          "interpretation": "borderline high"
+        },
+        {
+          "lab": "Vitamin_D",
+          "value": 22,
+          "units": "ng/mL",
+          "flagged": true,
+          "interpretation": "insufficient"
+        }
+      ],
+      "severity": "Follow-up recommended",
+      "severity_score": 4.5,
+      "severity_rationale": [
+        "Triglycerides contributed 1 point(s)",
+        "A1c contributed 2 point(s)",
+        "eGFR contributed 1 point(s)",
+        "Vitamin_D contributed 0.5 point(s)"
+      ],
+      "followup_questions": [
+        "Does the patient have home glucose readings, recent dietary changes, or missed diabetes medication doses?"
+      ]
+    }
+  },
+  {
+    "patient_id": "LAB_008",
+    "timestamp": "2026-03-30T22:45:37.212631Z",
+    "severity": "Routine",
+    "draft_message": "I reviewed your recent lab results. A few results are slightly outside the usual range, and I would like to go over them with you.",
+    "safety": {
+      "safe": false,
+      "issues": [
+        "No JSON returned"
+      ]
+    },
+    "audit": {
+      "patient_id": "LAB_008",
+      "abnormal_labs": [
+        {
+          "lab": "ALT",
+          "value": 74,
+          "units": "U/L",
+          "flagged": true,
+          "interpretation": "mildly elevated"
+        },
+        {
+          "lab": "AST",
+          "value": 79,
+          "units": "U/L",
+          "flagged": true,
+          "interpretation": "mildly elevated"
+        },
+        {
+          "lab": "A1c",
+          "value": 5.8,
+          "units": "%",
+          "flagged": true,
+          "interpretation": "prediabetes range"
+        },
+        {
+          "lab": "Vitamin_D",
+          "value": 26,
+          "units": "ng/mL",
+          "flagged": true,
+          "interpretation": "insufficient"
+        }
+      ],
+      "severity": "Routine",
+      "severity_score": 3.5,
+      "severity_rationale": [
+        "A1c contributed 1 point(s)",
+        "ALT contributed 1 point(s)",
+        "AST contributed 1 point(s)",
+        "Vitamin_D contributed 0.5 point(s)"
+      ],
+      "followup_questions": []
+    }
+  }
+]
